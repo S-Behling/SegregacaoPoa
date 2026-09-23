@@ -34,7 +34,7 @@ data/raw/ibge/
 # =========================
 # Outputs gerados
 # =========================
-outputs/
+interim/
 
 # =========================
 # Arquivos temporários
