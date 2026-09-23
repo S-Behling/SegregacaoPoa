@@ -84,3 +84,41 @@ processed
 │
 ▼
 08_results
+
+
+
+                     config.yaml
+                         │
+                         ↓
+                    src/config.py
+                         │
+                         ↓
+DATA RAW ───────→ 00_data_audit
+                         │
+                         ↓
+                 01_income_validation
+                         │
+                         ↓
+                    data/interim
+                         │
+                         ↓
+                 02_build_geographies
+                    ↙            ↘
+             src/grids.py    src/aggregation.py
+                    ↘            ↙
+                         ↓
+                   data/processed
+                         │
+              ┌──────────┼──────────┐
+              ↓          ↓          ↓
+             03          04         05
+          métricas    espacial  estabilidade
+              │          │          │
+              └──────────┼──────────┘
+                         ↓
+                 06_figures_tables
+                         │
+                         ↓
+                     outputs/
+                 ↙        ↓       ↘
+             figures     maps    tables
