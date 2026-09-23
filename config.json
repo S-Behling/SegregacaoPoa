@@ -1,0 +1,30 @@
+{
+  "study_area": "Porto Alegre",
+  "study_area_code": "4314902",
+  "uf": "RS",
+  "crs": "EPSG:31982",
+
+  "income_variable": "V06004",
+  "income_weight": "V06001",
+
+  "grid_sizes": [
+    500,
+    1000,
+    1500
+  ],
+
+  "offsets": {
+    "fractions": [
+      0,
+      0.333333,
+      0.666667
+    ]
+  },
+
+  "classification": "fixed_sector_quartiles",
+
+  "spatial_weights": "queen",
+  "permutations": 999,
+  "alpha": 0.05,
+  "seed": 42
+}

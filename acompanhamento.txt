@@ -1,0 +1,12 @@
+[✓] Malha de setores
+[✓] Renda por setor
+[✓] Malha de bairros
+[✓] Limite municipal
+
+[ ] Agregados básicos por setor
+[ ] Renda oficial por bairro
+[ ] Dicionário da renda
+[ ] Dicionário dos agregados
+
+[?] Relação setor → bairro
+    apenas verificar as colunas
