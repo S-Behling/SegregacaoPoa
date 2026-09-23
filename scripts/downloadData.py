@@ -22,7 +22,7 @@ CONFIG_PATH = PROJECT_ROOT / "config.json"
 
 DATA_DIR = PROJECT_ROOT / "data"
 RAW_DIR = DATA_DIR / "raw" / "ibge"
-PROCESSED_DIR = DATA_DIR / "processed"
+PROCESSED_DIR = DATA_DIR / "output"
 
 RAW_DIR.mkdir(parents=True, exist_ok=True)
 PROCESSED_DIR.mkdir(parents=True, exist_ok=True)

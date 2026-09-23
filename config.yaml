@@ -1,0 +1,375 @@
+# ============================================================
+# CONFIGURAÇÃO GERAL DO PROJETO
+# ============================================================
+
+project:
+  name: "desigualdade_urbana_multiescalar"
+  description: >
+    Análise multiescalar da desigualdade socioespacial em Porto Alegre,
+    com foco na sensibilidade dos resultados à escala e à representação espacial.
+  version: "0.1.0"
+  random_seed: 42
+
+
+# ============================================================
+# ÁREA DE ESTUDO
+# ============================================================
+
+study_area:
+  name: "Porto Alegre"
+  state: "Rio Grande do Sul"
+  country: "Brasil"
+
+  # CRS projetado para análises métricas
+  crs_projected: "EPSG:31982"
+
+  # CRS geográfico para intercâmbio / visualização
+  crs_geographic: "EPSG:4674"
+
+  # Campo identificador da unidade territorial de referência
+  id_field: "id_unidade"
+
+
+# ============================================================
+# CAMINHOS
+# ============================================================
+
+paths:
+  data:
+    raw: "data/raw"
+    interim: "data/interim"
+    processed: "data/processed"
+
+  outputs:
+    maps: "outputs/maps"
+    figures: "outputs/figures"
+    tables: "outputs/tables"
+
+  src:
+    preprocessing: "src/preprocessing"
+    spatial: "src/spatial"
+    metrics: "src/metrics"
+    visualization: "src/visualization"
+
+
+# ============================================================
+# DADOS DE ENTRADA
+# ============================================================
+
+input_data:
+
+  census:
+    source: "IBGE"
+    year: 2022
+
+    # Ajustar os nomes abaixo aos arquivos efetivamente baixados
+    geometry_file: "data/raw/ibge/setores_censitarios_2022.gpkg"
+    attributes_file: "data/raw/ibge/censo_2022.csv"
+
+    geometry_layer: null
+    encoding: "utf-8"
+
+    fields:
+      census_id: "CD_SETOR"
+      population: "populacao"
+      household_income_total: "rendimento_domiciliar_total"
+      income_per_capita: "renda_domiciliar_per_capita"
+
+  administrative_boundaries:
+    municipality_file: "data/raw/boundaries/porto_alegre.gpkg"
+    municipality_layer: null
+
+    neighborhoods_file: "data/raw/boundaries/bairros_porto_alegre.gpkg"
+    neighborhoods_layer: null
+
+
+# ============================================================
+# VARIÁVEL SOCIOECONÔMICA
+# ============================================================
+
+income:
+
+  variable_name: "renda_domiciliar_per_capita"
+
+  # Prioridade:
+  # 1. calcular a renda per capita quando rendimento total e população existirem;
+  # 2. utilizar a variável per capita disponível na base, caso contrário.
+  calculation:
+    preferred_method: "total_income_divided_by_population"
+    fallback_to_existing_per_capita: true
+
+  filters:
+    remove_null: true
+    remove_zero_population: true
+    remove_negative_income: true
+
+  transformations:
+    log_transform: false
+    standardize: false
+
+
+# ============================================================
+# UNIDADES ESPACIAIS E ESCALAS
+# ============================================================
+
+spatial_units:
+
+  base_unit:
+    name: "setor_censitario"
+    source: "census"
+
+  administrative:
+    municipality:
+      enabled: true
+
+    neighborhoods:
+      enabled: true
+
+  grids:
+    enabled: true
+    geometry: "square"
+
+    # Tamanhos das células em metros.
+    # Podem ser ajustados após a inspeção da resolução dos dados de origem.
+    sizes_m:
+      - 250
+      - 500
+      - 1000
+      - 2000
+      - 5000
+
+    aggregation:
+      method: "area_weighted"
+
+    # Origem fixa garante comparabilidade entre escalas.
+    origin:
+      mode: "fixed"
+
+  alternative_zonings:
+    enabled: false
+
+    # Número de configurações alternativas por escala, caso seja
+    # posteriormente incorporado teste explícito do efeito de zoneamento.
+    n_realizations: 100
+
+    random_seed: 42
+
+
+# ============================================================
+# AGREGAÇÃO
+# ============================================================
+
+aggregation:
+
+  population:
+    statistic: "sum"
+
+  household_income_total:
+    statistic: "sum"
+
+  income_per_capita:
+    method: "recalculate"
+    numerator: "household_income_total"
+    denominator: "population"
+
+  minimum_population:
+    enabled: true
+    threshold: 1
+
+
+# ============================================================
+# MÉTRICAS DE DESIGUALDADE
+# ============================================================
+
+inequality_metrics:
+
+  gini:
+    enabled: true
+
+  coefficient_of_variation:
+    enabled: true
+
+  percentile_ratio:
+    enabled: true
+    lower_percentile: 10
+    upper_percentile: 90
+
+  interquartile_range:
+    enabled: true
+
+  theil:
+    enabled: false
+
+
+# ============================================================
+# MÉTRICAS ESPACIAIS
+# ============================================================
+
+spatial_metrics:
+
+  morans_i:
+    enabled: true
+
+    weights:
+      type: "queen"
+      row_standardized: true
+
+    permutations: 999
+    significance_level: 0.05
+
+  local_morans_i:
+    enabled: true
+
+    weights:
+      type: "queen"
+      row_standardized: true
+
+    permutations: 999
+    significance_level: 0.05
+
+    cluster_labels:
+      - "HH"
+      - "LL"
+      - "HL"
+      - "LH"
+      - "NS"
+
+
+# ============================================================
+# SENSIBILIDADE À ESCALA
+# ============================================================
+
+scale_sensitivity:
+
+  reference_scale: 250
+
+  compare_metrics:
+    - "gini"
+    - "coefficient_of_variation"
+    - "percentile_ratio"
+    - "morans_i"
+
+  measures:
+    absolute_change: true
+    relative_change: true
+    rank_correlation: true
+
+  rank_correlation_method: "spearman"
+
+
+# ============================================================
+# CARACTERÍSTICAS DAS UNIDADES
+# ============================================================
+
+area_characteristics:
+
+  calculate:
+    area_km2: true
+    population_density: true
+    mean_income: true
+    population: true
+
+  morphology:
+    compactness: false
+    perimeter_area_ratio: false
+
+
+# ============================================================
+# ANÁLISE DE ASSOCIAÇÃO
+# ============================================================
+
+association_analysis:
+
+  dependent_variables:
+    - "scale_sensitivity"
+
+  explanatory_variables:
+    - "area_km2"
+    - "population"
+    - "population_density"
+    - "mean_income"
+
+  correlations:
+    pearson: true
+    spearman: true
+
+  regression:
+    enabled: false
+    method: "OLS"
+
+  significance_level: 0.05
+
+
+# ============================================================
+# VISUALIZAÇÃO
+# ============================================================
+
+visualization:
+
+  dpi: 300
+
+  figure_format: "png"
+
+  map:
+    scheme: "quantiles"
+    k_classes: 5
+    show_boundaries: true
+    show_north_arrow: true
+    show_scale_bar: true
+
+  tables:
+    decimal_places: 3
+    csv_separator: ";"
+
+
+# ============================================================
+# EXPORTAÇÃO
+# ============================================================
+
+export:
+
+  geospatial_format: "GPKG"
+
+  save_intermediate_files: true
+
+  overwrite_existing: true
+
+  filenames:
+    prepared_census: "census_prepared.gpkg"
+    spatial_units: "spatial_units.gpkg"
+    multiscale_income: "multiscale_income.gpkg"
+    spatial_metrics: "spatial_metrics.gpkg"
+    scale_sensitivity: "scale_sensitivity.csv"
+    area_characteristics: "area_characteristics.csv"
+    association_results: "association_results.csv"
+
+
+# ============================================================
+# NOTEBOOKS
+# ============================================================
+
+notebooks:
+
+  "01_data_preparation":
+    description: "Importação, limpeza e preparação dos dados do Censo."
+
+  "02_spatial_units":
+    description: "Construção e harmonização das unidades espaciais."
+
+  "03_multiscale_income":
+    description: "Agregação da variável de renda em múltiplas escalas."
+
+  "04_spatial_metrics":
+    description: "Cálculo das métricas de desigualdade e autocorrelação espacial."
+
+  "05_scale_sensitivity":
+    description: "Avaliação da sensibilidade dos resultados à mudança de escala."
+
+  "06_area_characteristics":
+    description: "Caracterização das unidades espaciais."
+
+  "07_association_analysis":
+    description: "Análise das associações entre sensibilidade e características territoriais."
+
+  "08_results":
+    description: "Síntese, visualização e exportação dos resultados finais."

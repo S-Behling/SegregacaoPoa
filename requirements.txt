@@ -1,0 +1,303 @@
+# Multiscale Urban Inequality
+Code, processed data, and results for the multiscale analysis of urban inequality in Porto Alegre, Rio Grande do Sul, Brazil.
+
+The project compares different spatial representations of income and measures how the results change across spatial scales.
+
+It also aims to identify which area characteristics are associated with higher or lower sensitivity to spatial aggregation.
+
+# Objective
+The pipeline was developed to answer three main questions:
+- how income patterns change across different spatial scales;
+- where these changes are more pronounced;
+- which spatial or socioeconomic characteristics are associated with these changes.
+
+The focus is not only on detecting the effects of spatial aggregation, but also on characterizing and tracking the areas that 
+are most sensitive to changes in scale and spatial representation.
+
+## Pipeline
+
+```text
+Census data
+    ↓
+Data cleaning
+    ↓
+Income variable
+    ↓
+Spatial units / grids
+    ↓
+Aggregation by scale
+    ↓
+Spatial metrics
+    ↓
+Scale comparison
+    ↓
+Sensitivity metrics
+    ↓
+Area characteristics
+    ↓
+Association analysis
+    ↓
+Maps + tables + figures
+
+
+# Estrutura do projeto
+.
+├── data/
+│   ├── raw/
+│   ├── interim/
+│   └── processed/
+│
+├── notebooks/
+│   ├── 01_data_preparation.ipynb
+│   ├── 02_spatial_units.ipynb
+│   ├── 03_multiscale_income.ipynb
+│   ├── 04_spatial_metrics.ipynb
+│   ├── 05_scale_sensitivity.ipynb
+│   ├── 06_area_characteristics.ipynb
+│   ├── 07_association_analysis.ipynb
+│   └── 08_results.ipynb
+│
+├── src/
+│   ├── preprocessing/
+│   ├── spatial/
+│   ├── metrics/
+│   └── visualization/
+│
+├── outputs/
+│   ├── maps/
+│   ├── figures/
+│   └── tables/
+│
+├── config/
+├── requirements.txt
+├── .gitignore
+└── README.md
+
+
+# Data
+Main source: IBGE Census 2022
+Main socioeconomic variable: household income per capita
+Spatial data may include: 
+ - census sectors;
+ - regular grids;
+ - aggregated spatial units;
+ - administrative boundaries.
+
+Original input files: data/raw/
+Processed datasets used by the analysis: data/processed/
+
+# Spatial reference system
+Main projected CRS:
+- EPSG:31982
+- SIRGAS 2000 / UTM zone 22S
+
+
+# Analysis workflow
+1. Data preparation
+
+Cleaning and preprocessing of census and spatial data.
+
+Main tasks:
+- load census data;
+- standardize column names;
+- join socioeconomic and spatial datasets;
+- calculate income variables;
+- validate geometries;
+- convert CRS.
+
+2. Spatial units
+Generate or load the spatial representations used in the analysis.
+
+Examples:
+census sectors
+regular grids
+aggregated cells
+administrative units
+
+Each configuration should have a unique identifier.
+
+Example:
+sector
+grid_250m
+grid_500m
+grid_1000m
+grid_2000m
+
+3. Aggregation
+
+Aggregate population and income data to each spatial configuration.
+
+Outputs should preserve the original totals whenever possible.
+
+Basic validation:
+
+total population before aggregation
+≈
+total population after aggregation
+
+4. Spatial metrics
+
+Calculate metrics for each scale.
+
+Possible outputs include:
+mean income;
+median income;
+variance;
+coefficient of variation;
+Gini coefficient;
+spatial autocorrelation;
+local spatial clusters.
+
+The exact metrics may change during development.
+
+5. Scale sensitivity
+
+Compare the results obtained at different scales.
+
+The goal is to quantify how much each location or spatial pattern changes when the spatial representation changes.
+
+Possible sensitivity measures include:
+absolute difference
+relative difference
+rank change
+cluster change
+class persistence
+local variance across scales
+
+These metrics can be used to identify stable and unstable areas.
+
+6. Area characteristics
+
+Extract characteristics that may help explain scale sensitivity.
+
+Examples:
+population density;
+income heterogeneity;
+local spatial autocorrelation;
+urban density;
+area size;
+shape;
+neighborhood composition;
+proximity to socioeconomic transitions.
+
+The resulting dataset should contain one observation per spatial unit or location, combining sensitivity metrics and explanatory characteristics.
+
+7. Association analysis
+
+Test relationships between scale sensitivity and area characteristics.
+
+Depending on the final model, this step may include:
+correlation analysis
+regression
+spatial regression
+classification
+feature importance
+Output format
+
+Whenever possible, generated datasets should contain fields identifying the analysis configuration.
+
+Example:
+unit_id
+scale
+representation
+income_mean
+income_median
+gini
+moran_i
+cluster
+sensitivity
+population_density
+income_variance
+
+This makes it easier to compare results between experiments.
+
+# Configuration
+
+Parameters that may change between experiments should preferably be stored outside the notebooks.
+
+Example:
+study_area: Porto Alegre
+crs: EPSG:31982
+
+scales:
+  - 250
+  - 500
+  - 1000
+  - 2000
+
+variable:
+  name: income_per_capita
+
+Suggested location:
+config/config.yaml
+Environment
+
+Python 3.x
+
+Main dependencies:
+pandas
+numpy
+geopandas
+shapely
+pyogrio
+matplotlib
+scipy
+scikit-learn
+libpysal
+esda
+
+Install dependencies with:
+pip install -r requirements.txt
+Running the project
+
+Clone the repository:
+git clone https://github.com/USERNAME/REPOSITORY.git
+cd REPOSITORY
+
+Create a virtual environment:
+python -m venv .venv
+
+Activate it.
+
+Windows:
+.venv\Scripts\activate
+
+
+Install dependencies:
+pip install -r requirements.txt
+
+Run the notebooks in numerical order:
+01 → 02 → 03 → 04 → 05 → 06 → 07 → 08
+
+Reproducibility
+
+The repository keeps the main analytical choices explicit whenever possible.
+
+Important parameters include:
+CRS
+grid size
+aggregation method
+neighborhood definition
+spatial weights
+distance threshold
+classification method
+random seed
+
+Avoid hard-coded paths inside notebooks.
+
+Prefer:
+
+from pathlib import Path
+
+DATA_DIR = Path("data")
+
+instead of:
+
+DATA_DIR = "C:/Users/..."
+
+# Author
+
+Simone Behling
+Master's research project
+Urban and Regional Planning
+UFRGS
