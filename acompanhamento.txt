@@ -10,3 +10,40 @@
 
 [?] Relação setor → bairro
     apenas verificar as colunas
+
+
+| Variável | Significado                                                               |
+| -------- | ------------------------------------------------------------------------------------- |
+| `V06001` | Pessoas responsáveis em domicílios particulares permanentes ocupados                  |
+| `V06002` | Moradores em domicílios particulares permanentes ocupados                             |
+| `V06003` | Variância do número de moradores nesses domicílios                                    |
+| `V06004` | **Valor do rendimento nominal médio mensal das pessoas responsáveis com rendimentos** |
+| `V06005` | Variância do rendimento nominal mensal das pessoas responsáveis com rendimentos       |
+| `V06006` | Mediana do rendimento nominal mensal das pessoas responsáveis com rendimentos         |
+
+
+*problema: V06004 fornece a renda media dos responsaveis com rendimento, 
+mas a base não informa o número exato desses responsaveis com rendimento, 
+isso impede recalcular corretamente essa média ao agregar setores em bairros ou grades.
+
+IBGE publicou os resultados da Amostra de Trabalho e Rendimento, e nela existem variáveis 
+como rendimento domiciliar, rendimento domiciliar per capita e rendimento mensal total. 
+O problema é (espacial): os dados da amostra não são divulgados por setor censitário 
+-> a menor unidade é a Área de Ponderação (APOND)
+
+caminhos:
+1. Manter setor censitário como unidade de origem: usar V06004 (renda média do responsável), 
+aceitando que não consigo reconstruir exatamente a média ao reagregar porque falta o “responsáveis com rendimento”.
+2. Trocar a unidade de origem para Área de Ponderação: podendo trabalhar com rendimento domiciliar per capita,
+que conceitualmente se aproxima muito mais do que eu queria medir. problema -> perder resolução espacial 
+antes de começar o experimento de escala. O IBGE define as APONDs como o menor recorte para resultados da amostra.
+3. Procurar outra variável aditiva ou que tenha denominador conhecido: cenário ideal para continuar partindo dos setores. 
+4. Chorar
+
+Variáveis existentes nas Áreas de Ponderação (Censo 2022): 
+rendimento domiciliar per capita e rendimento domiciliar total e peso amostral
+Isso resolve o problema com V06004, porque deixo de depender da renda média do responsável e passo a trabalhar 
+com uma medida mais alinhada a metodologia.
+
+Problema -> espacial: As APONDs são agrupamentos de setores censitários e são o menor recorte de divulgação da amostra. 
+(consideravelmente maiores que setores censitários)
