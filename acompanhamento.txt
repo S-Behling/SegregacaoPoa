@@ -47,3 +47,40 @@ com uma medida mais alinhada a metodologia.
 
 Problema -> espacial: As APONDs são agrupamentos de setores censitários e são o menor recorte de divulgação da amostra. 
 (consideravelmente maiores que setores censitários)
+
+
+raw
+│
+│ dados originais IBGE
+│
+▼
+01_data_preparation
+│
+▼
+processed
+│
+├─ setores_poa.gpkg
+├─ renda_setores_poa.csv
+├─ bairros_poa.gpkg
+└─ limite_poa.gpkg
+│
+▼
+02_spatial_units
+│
+▼
+03_multiscale_income
+│
+▼
+04_spatial_metrics
+│
+▼
+05_scale_sensitivity
+│
+▼
+06_area_characteristics
+│
+▼
+07_association_analysis
+│
+▼
+08_results

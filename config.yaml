@@ -79,7 +79,7 @@ input_data:
     municipality_file: "data/raw/boundaries/porto_alegre.gpkg"
     municipality_layer: null
 
-    neighborhoods_file: "data/raw/boundaries/bairros_porto_alegre.gpkg"
+    neighborhoods_file: "data/raw/boundaries/bairros_poa.gpkg"
     neighborhoods_layer: null
 
 
