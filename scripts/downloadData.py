@@ -8,6 +8,7 @@ from data_utils import (
     load_income_neighborhoods,
     load_sector_geometry,
     load_neighborhood_geometry,
+    load_basic_sector_data,
     build_municipal_boundary,
     validate_downloads
 )
@@ -22,7 +23,7 @@ CONFIG_PATH = PROJECT_ROOT / "config.json"
 
 DATA_DIR = PROJECT_ROOT / "data"
 RAW_DIR = DATA_DIR / "raw" / "ibge"
-PROCESSED_DIR = DATA_DIR / "output"
+PROCESSED_DIR = DATA_DIR / "interim"
 
 RAW_DIR.mkdir(parents=True, exist_ok=True)
 PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
@@ -43,7 +44,11 @@ CRS = config["crs"]
 
 INCOME_VARIABLE = config["income_variable"]
 INCOME_WEIGHT = config["income_weight"]
+RESIDENTS_VARIABLE = config["residents_variable"]
 
+BASIC_POPULATION_VARIABLE = config["basic_population_variable"]
+BASIC_AVG_HOUSEHOLD_SIZE_VARIABLE = config["basic_avg_household_size_variable"]
+BASIC_HOUSEHOLDS_VARIABLE = config["basic_households_variable"]
 
 # ============================================================
 # URLS
@@ -69,10 +74,21 @@ URL_MALHA_BAIRROS = (
     "RS_bairros_CD2022.zip"
 )
 
-# Estes dois eu deixaria para preencher
-# depois de confirmar os nomes exatos no FTP:
-URL_RENDA_BAIRROS = None
-URL_AGREGADOS_BASICOS = None
+# confirmar os nomes exatos no FTP:
+URL_RENDA_BAIRROS = (
+    "https://ftp.ibge.gov.br/"
+    "Censos/Censo_Demografico_2022/"
+    "Agregados_por_Setores_Censitarios_Rendimento_do_Responsavel/"
+    "Agregados_por_bairros_renda_responsavel_BR_20260508_csv.zip"
+)
+
+URL_AGREGADOS_BASICOS = (
+    "https://ftp.ibge.gov.br/"
+    "Censos/Censo_Demografico_2022/"
+    "Agregados_por_Setores_Censitarios/"
+    "Agregados_por_Setor_csv/"
+    "Agregados_por_setores_basico_BR_20260520.zip"
+)
 
 
 # ============================================================
@@ -114,10 +130,11 @@ def main():
     )
 
     renda_setores = load_income_sectors(
-        source_dir=renda_extract,
-        municipality_code=STUDY_AREA_CODE,
-        income_variable=INCOME_VARIABLE,
-        income_weight=INCOME_WEIGHT,
+    source_dir=renda_extract,
+    municipality_code=STUDY_AREA_CODE,
+    income_variable=INCOME_VARIABLE,
+    income_weight=INCOME_WEIGHT,
+    residents_variable=RESIDENTS_VARIABLE,
     )
 
     output_renda_setores = (
@@ -305,6 +322,7 @@ def main():
                 municipality_code=STUDY_AREA_CODE,
                 income_variable=INCOME_VARIABLE,
                 income_weight=INCOME_WEIGHT,
+                residents_variable=RESIDENTS_VARIABLE
             )
         )
 
@@ -335,20 +353,67 @@ def main():
     # 7. AGREGADOS BÁSICOS
     # ========================================================
 
-    if URL_AGREGADOS_BASICOS is not None:
+    basicos_dir = (
+        RAW_DIR
+        / "agregados_basicos"
+    )
 
-        print(
-            "\nDownload dos agregados básicos "
-            "será executado aqui."
+    basicos_zip = (
+        basicos_dir
+        / "agregados_basicos.zip"
+    )
+
+    basicos_extract = (
+        basicos_dir
+        / "extracted"
+    )
+
+    basicos_dir.mkdir(
+        parents=True,
+        exist_ok=True
+    )
+
+    download_file(
+        url=URL_AGREGADOS_BASICOS,
+        destination=basicos_zip
+    )
+
+    extract_zip(
+        zip_path=basicos_zip,
+        extract_dir=basicos_extract
+    )
+
+    agregados_basicos = (
+        load_basic_sector_data(
+            source_dir=basicos_extract,
+            municipality_code=STUDY_AREA_CODE,
+            population_variable=(
+                BASIC_POPULATION_VARIABLE
+            ),
+            avg_household_size_variable=(
+                BASIC_AVG_HOUSEHOLD_SIZE_VARIABLE
+            ),
+            households_variable=(
+                BASIC_HOUSEHOLDS_VARIABLE
+            ),
         )
+    )
 
-    else:
+    output_basicos = (
+        PROCESSED_DIR
+        / "agregados_basicos_poa.csv"
+    )
 
-        print(
-            "\nAgregados básicos: URL ainda "
-            "não definida."
-        )
+    agregados_basicos.to_csv(
+        output_basicos,
+        index=False,
+        encoding="utf-8-sig"
+    )
 
+    print(
+        "Agregados básicos salvos em: "
+        f"{output_basicos}"
+    )
 
     # ========================================================
     # 8. VALIDAÇÃO FINAL

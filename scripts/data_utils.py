@@ -6,20 +6,11 @@ import requests
 
 # ==========
 ## Funcao generica de download
-def download_file(url, destination,):
-
-    if destination.exists():
-
-        print(
-            f"Arquivo já existe: "
-            f"{destination.name}"
+def download_file(url, destination):
+    if not url:
+        raise ValueError(
+            "URL de download não definida."
         )
-
-        return
-
-    print(
-        f"Baixando: {destination.name}"
-    )
 
     response = requests.get(
         url,
@@ -29,21 +20,27 @@ def download_file(url, destination,):
 
     response.raise_for_status()
 
-    with open(destination,"wb") as f:
+    destination.parent.mkdir(
+        parents=True,
+        exist_ok=True
+    )
 
+    with open(destination, "wb") as f:
         for chunk in response.iter_content(
             chunk_size=1024 * 1024
         ):
-
             if chunk:
                 f.write(chunk)
 
-    print("Download concluído.")
-
 # ==========
 # Download setores censitarios
-def load_income_sectors(source_dir, municipality_code, income_variable, income_weight,):
-
+def load_income_sectors(
+    source_dir,
+    municipality_code,
+    income_variable,
+    income_weight,
+    residents_variable,
+    ):
     csv_files = list(
         source_dir.rglob("*.csv")
     )
@@ -70,6 +67,7 @@ def load_income_sectors(source_dir, municipality_code, income_variable, income_w
         "CD_SETOR",
         income_variable,
         income_weight,
+        residents_variable,
     ]
 
     missing = [
@@ -85,25 +83,23 @@ def load_income_sectors(source_dir, municipality_code, income_variable, income_w
 
     poa = df.loc[
         df["CD_SETOR"].str.startswith(
-            municipality_code,
+            str(municipality_code),
             na=False
         ),
         required
     ].copy()
 
-    poa[income_variable] = (
-        pd.to_numeric(
-            poa[income_variable],
-            errors="coerce"
-        )
-    )
+    numeric_columns = [
+        income_variable,
+        income_weight,
+        residents_variable,
+    ]
 
-    poa[income_weight] = (
-        pd.to_numeric(
-            poa[income_weight],
+    for col in numeric_columns:
+        poa[col] = pd.to_numeric(
+            poa[col],
             errors="coerce"
         )
-    )
 
     return poa
 
@@ -113,7 +109,7 @@ def extract_zip(
     zip_path: Path,
     extract_dir: Path,
     overwrite: bool = False,
-) -> Path:
+    ) -> Path:
     """
     Extrai um arquivo ZIP para uma pasta de destino.
 
@@ -226,11 +222,12 @@ def load_income_neighborhoods(
     municipality_code: str,
     income_variable: str,
     income_weight: str,
-) -> pd.DataFrame:
+    residents_variable: str,
+    ):
     """
     Carrega a base de rendimento por bairro do IBGE,
-    filtra o município desejado e retorna apenas
-    as colunas necessárias para a análise.
+    filtra o município desejado e retorna as variáveis
+    necessárias para a análise.
 
     Parameters
     ----------
@@ -242,18 +239,23 @@ def load_income_neighborhoods(
         Ex.: "4314902" para Porto Alegre.
 
     income_variable : str
-        Nome da variável de renda.
+        Variável principal de rendimento.
         Ex.: "V06004".
 
     income_weight : str
-        Nome da variável utilizada como peso.
+        Variável utilizada como peso.
         Ex.: "V06001".
+
+    residents_variable : str
+        Número de moradores em domicílios particulares
+        permanentes ocupados.
+        Ex.: "V06002".
 
     Returns
     -------
     pd.DataFrame
         DataFrame contendo os bairros do município e
-        as variáveis de renda selecionadas.
+        as variáveis selecionadas.
     """
 
     source_dir = Path(source_dir)
@@ -271,12 +273,14 @@ def load_income_neighborhoods(
             f"Nenhum CSV encontrado em: {source_dir}"
         )
 
-    print("\nArquivos CSV encontrados para renda por bairro:")
+    print(
+        "\nArquivos CSV encontrados para renda por bairro:"
+    )
 
     for file in csv_files:
         print(" -", file.name)
 
-    # Tenta priorizar arquivo que tenha "bairro" no nome
+    # Prioriza arquivo com "bairro" no nome
     bairro_files = [
         file
         for file in csv_files
@@ -288,20 +292,57 @@ def load_income_neighborhoods(
     else:
         csv_path = csv_files[0]
 
-    print("\nArquivo de renda por bairro utilizado:")
+    print(
+        "\nArquivo de renda por bairro utilizado:"
+    )
     print(csv_path)
 
     # --------------------------------------------------
-    # LEITURA
+    # LEITURA COM FALLBACK DE ENCODING
     # --------------------------------------------------
 
-    df = pd.read_csv(
-        csv_path,
-        sep=";",
-        quotechar='"',
-        encoding="utf-8-sig",
-        dtype=str,
-        low_memory=False
+    encodings = [
+        "utf-8-sig",
+        "cp1252",
+        "latin-1",
+    ]
+
+    df = None
+    used_encoding = None
+
+    for encoding in encodings:
+
+        try:
+            df = pd.read_csv(
+                csv_path,
+                sep=";",
+                quotechar='"',
+                encoding=encoding,
+                dtype=str,
+                low_memory=False
+            )
+
+            used_encoding = encoding
+            break
+
+        except UnicodeDecodeError:
+            continue
+
+    if df is None:
+        raise UnicodeError(
+            "Não foi possível ler o arquivo usando "
+            "utf-8-sig, cp1252 ou latin-1."
+        )
+
+    print(
+        f"\nEncoding utilizado: {used_encoding}"
+    )
+
+    # Limpa possíveis espaços ou BOM nos nomes
+    df.columns = (
+        df.columns
+        .str.replace("\ufeff", "", regex=False)
+        .str.strip()
     )
 
     print("\nColunas encontradas:")
@@ -332,7 +373,7 @@ def load_income_neighborhoods(
     )
 
     # --------------------------------------------------
-    # IDENTIFICA COLUNA DO BAIRRO
+    # IDENTIFICA COLUNAS DO BAIRRO
     # --------------------------------------------------
 
     neighborhood_code_candidates = [
@@ -372,6 +413,7 @@ def load_income_neighborhoods(
     required_variables = [
         income_variable,
         income_weight,
+        residents_variable,
     ]
 
     missing_variables = [
@@ -382,8 +424,8 @@ def load_income_neighborhoods(
 
     if missing_variables:
         raise KeyError(
-            "Variáveis de renda não encontradas: "
-            f"{missing_variables}"
+            "Variáveis não encontradas na base de "
+            f"rendimento por bairro: {missing_variables}"
         )
 
     if neighborhood_code_column is None:
@@ -396,26 +438,37 @@ def load_income_neighborhoods(
     # FILTRO DO MUNICÍPIO
     # --------------------------------------------------
 
+    municipality_code = str(
+        municipality_code
+    )
+
     if municipality_column is not None:
 
         df_filtered = df[
             df[municipality_column]
             .astype(str)
-            .eq(str(municipality_code))
+            .str.strip()
+            .eq(municipality_code)
         ].copy()
 
     else:
 
-        # Caso não exista CD_MUN, tenta usar o prefixo
-        # do código do bairro, se aplicável.
+        # Fallback caso não exista coluna CD_MUN
         df_filtered = df[
             df[neighborhood_code_column]
             .astype(str)
+            .str.strip()
             .str.startswith(
-                str(municipality_code),
+                municipality_code,
                 na=False
             )
         ].copy()
+
+    if df_filtered.empty:
+        raise ValueError(
+            "Nenhum bairro encontrado para o município "
+            f"{municipality_code}."
+        )
 
     # --------------------------------------------------
     # SELEÇÃO DAS COLUNAS
@@ -434,6 +487,7 @@ def load_income_neighborhoods(
         [
             income_variable,
             income_weight,
+            residents_variable,
         ]
     )
 
@@ -442,7 +496,7 @@ def load_income_neighborhoods(
     ].copy()
 
     # --------------------------------------------------
-    # RENOMEIA CHAVES PARA PADRÃO DO PROJETO
+    # RENOMEIA CHAVES
     # --------------------------------------------------
 
     rename_columns = {
@@ -458,23 +512,51 @@ def load_income_neighborhoods(
         columns=rename_columns
     )
 
+    # Mantém código como string
+    renda_bairros["CD_BAIRRO"] = (
+        renda_bairros["CD_BAIRRO"]
+        .astype(str)
+        .str.strip()
+    )
+
     # --------------------------------------------------
     # CONVERSÃO NUMÉRICA
     # --------------------------------------------------
 
-    renda_bairros[income_variable] = (
-        pd.to_numeric(
-            renda_bairros[income_variable],
+    numeric_columns = [
+        income_variable,
+        income_weight,
+        residents_variable,
+    ]
+
+    for col in numeric_columns:
+
+        renda_bairros[col] = (
+            renda_bairros[col]
+            .astype(str)
+            .str.replace(",", ".", regex=False)
+        )
+
+        renda_bairros[col] = pd.to_numeric(
+            renda_bairros[col],
             errors="coerce"
         )
+
+    # --------------------------------------------------
+    # DUPLICIDADES
+    # --------------------------------------------------
+
+    duplicated = (
+        renda_bairros["CD_BAIRRO"]
+        .duplicated()
+        .sum()
     )
 
-    renda_bairros[income_weight] = (
-        pd.to_numeric(
-            renda_bairros[income_weight],
-            errors="coerce"
+    if duplicated > 0:
+        raise ValueError(
+            f"Foram encontrados {duplicated} "
+            "códigos de bairro duplicados."
         )
-    )
 
     # --------------------------------------------------
     # VALIDAÇÃO FINAL
@@ -495,11 +577,10 @@ def load_income_neighborhoods(
 
     print(
         renda_bairros[
-            [
-                income_variable,
-                income_weight
-            ]
-        ].isna().sum()
+            numeric_columns
+        ]
+        .isna()
+        .sum()
     )
 
     return renda_bairros
@@ -510,7 +591,7 @@ def load_sector_geometry(
     zip_path: Path,
     municipality_code: str,
     target_crs: str,
-) -> gpd.GeoDataFrame:
+    ) -> gpd.GeoDataFrame:
     """
     Carrega a malha de setores censitários do IBGE diretamente
     de um arquivo ZIP, filtra o município desejado e reprojeta
@@ -686,7 +767,7 @@ def load_neighborhood_geometry(
     zip_path: Path,
     municipality_code: str,
     target_crs: str,
-) -> gpd.GeoDataFrame:
+    ) -> gpd.GeoDataFrame:
     """
     Carrega a malha de bairros do IBGE diretamente de um arquivo ZIP,
     filtra o município desejado e reprojeta para o CRS definido.
@@ -974,7 +1055,7 @@ def build_municipal_boundary(
     gdf: gpd.GeoDataFrame,
     municipality_code: str | None = None,
     municipality_name: str | None = None,
-) -> gpd.GeoDataFrame:
+    ) -> gpd.GeoDataFrame:
     """
     Constrói o limite municipal a partir da união das geometrias
     de uma malha já filtrada para um único município.
@@ -1096,7 +1177,7 @@ def validate_downloads(
     bairros: gpd.GeoDataFrame,
     limite: gpd.GeoDataFrame,
     income_variable: str,
-) -> None:
+    ) -> None:
     """
     Executa validações básicas nas bases processadas.
 
@@ -1135,7 +1216,7 @@ def validate_downloads(
         description: str,
         condition: bool,
         details: str | None = None,
-    ) -> None:
+        ) -> None:
 
         nonlocal problemas
 
@@ -1150,316 +1231,515 @@ def validate_downloads(
 
             problemas += 1
 
-    # ==================================================
-    # 1. SETORES
-    # ==================================================
+        # ==================================================
+        # 1. SETORES
+        # ==================================================
 
-    print("\n--- SETORES ---")
+        print("\n--- SETORES ---")
 
-    check(
-        "Base de setores não está vazia",
-        not setores.empty,
-    )
+        check(
+            "Base de setores não está vazia",
+            not setores.empty,
+        )
 
-    check(
-        "Setores possuem CRS",
-        setores.crs is not None,
-    )
+        check(
+            "Setores possuem CRS",
+            setores.crs is not None,
+        )
 
-    check(
-        "Coluna CD_SETOR existe",
-        "CD_SETOR" in setores.columns,
-    )
+        check(
+            "Coluna CD_SETOR existe",
+            "CD_SETOR" in setores.columns,
+        )
 
-    check(
-        f"Variável {income_variable} existe",
-        income_variable in setores.columns,
-    )
+        check(
+            f"Variável {income_variable} existe",
+            income_variable in setores.columns,
+        )
 
-    if "CD_SETOR" in setores.columns:
+        if "CD_SETOR" in setores.columns:
 
-        duplicados = (
-            setores["CD_SETOR"]
-            .duplicated()
+            duplicados = (
+                setores["CD_SETOR"]
+                .duplicated()
+                .sum()
+            )
+
+            check(
+                "CD_SETOR não possui duplicatas",
+                duplicados == 0,
+                f"{duplicados} duplicatas encontradas.",
+            )
+
+        # --------------------------------------------------
+        # GEOMETRIAS DOS SETORES
+        # --------------------------------------------------
+
+        geometrias_nulas = (
+            setores.geometry
+            .isna()
             .sum()
         )
 
         check(
-            "CD_SETOR não possui duplicatas",
-            duplicados == 0,
-            f"{duplicados} duplicatas encontradas.",
+            "Setores não possuem geometrias nulas",
+            geometrias_nulas == 0,
+            f"{geometrias_nulas} geometrias nulas.",
         )
 
-    # --------------------------------------------------
-    # GEOMETRIAS DOS SETORES
-    # --------------------------------------------------
+        if not setores.empty:
 
-    geometrias_nulas = (
-        setores.geometry
-        .isna()
-        .sum()
-    )
+            geometrias_invalidas = (
+                ~setores.geometry.is_valid
+            ).sum()
 
-    check(
-        "Setores não possuem geometrias nulas",
-        geometrias_nulas == 0,
-        f"{geometrias_nulas} geometrias nulas.",
-    )
+            check(
+                "Geometrias dos setores são válidas",
+                geometrias_invalidas == 0,
+                f"{geometrias_invalidas} geometrias inválidas.",
+            )
 
-    if not setores.empty:
+        # --------------------------------------------------
+        # RENDA
+        # --------------------------------------------------
 
-        geometrias_invalidas = (
-            ~setores.geometry.is_valid
-        ).sum()
+        if income_variable in setores.columns:
+
+            renda = pd.to_numeric(
+                setores[income_variable],
+                errors="coerce"
+            )
+
+            renda_nula = (
+                renda.isna().sum()
+            )
+
+            renda_negativa = (
+                (renda.dropna() < 0)
+                .sum()
+            )
+
+            check(
+                f"{income_variable} possui dados",
+                renda.notna().any(),
+            )
+
+            check(
+                f"{income_variable} não possui valores negativos",
+                renda_negativa == 0,
+                f"{renda_negativa} valores negativos.",
+            )
+
+            taxa_match = (
+                renda.notna().mean()
+                * 100
+            )
+
+            print(
+                f"  Correspondência renda/setores: "
+                f"{taxa_match:.2f}%"
+            )
+
+            check(
+                "Correspondência da renda é maior que 95%",
+                taxa_match >= 95,
+                (
+                    f"Apenas {taxa_match:.2f}% dos setores "
+                    "possuem renda."
+                ),
+            )
+
+        # ==================================================
+        # 2. BAIRROS
+        # ==================================================
+
+        print("\n--- BAIRROS ---")
 
         check(
-            "Geometrias dos setores são válidas",
-            geometrias_invalidas == 0,
-            f"{geometrias_invalidas} geometrias inválidas.",
+            "Base de bairros não está vazia",
+            not bairros.empty,
+        )
+
+        check(
+            "Bairros possuem CRS",
+            bairros.crs is not None,
+        )
+
+        check(
+            "Coluna CD_BAIRRO existe",
+            "CD_BAIRRO" in bairros.columns,
+        )
+
+        if "CD_BAIRRO" in bairros.columns:
+
+            bairros_duplicados = (
+                bairros["CD_BAIRRO"]
+                .duplicated()
+                .sum()
+            )
+
+            check(
+                "CD_BAIRRO não possui duplicatas",
+                bairros_duplicados == 0,
+                (
+                    f"{bairros_duplicados} códigos "
+                    "de bairro duplicados."
+                ),
+            )
+
+        bairros_geom_nulas = (
+            bairros.geometry
+            .isna()
+            .sum()
+        )
+
+        check(
+            "Bairros não possuem geometrias nulas",
+            bairros_geom_nulas == 0,
+            (
+                f"{bairros_geom_nulas} geometrias "
+                "de bairro nulas."
+            ),
+        )
+
+        if not bairros.empty:
+
+            bairros_invalidos = (
+                ~bairros.geometry.is_valid
+            ).sum()
+
+            check(
+                "Geometrias dos bairros são válidas",
+                bairros_invalidos == 0,
+                (
+                    f"{bairros_invalidos} geometrias "
+                    "inválidas."
+                ),
+            )
+
+        # ==================================================
+        # 3. LIMITE MUNICIPAL
+        # ==================================================
+
+        print("\n--- LIMITE MUNICIPAL ---")
+
+        check(
+            "Limite municipal não está vazio",
+            not limite.empty,
+        )
+
+        check(
+            "Limite possui CRS",
+            limite.crs is not None,
+        )
+
+        check(
+            "Limite possui apenas uma geometria",
+            len(limite) == 1,
+            (
+                f"Foram encontradas {len(limite)} "
+                "geometrias."
+            ),
+        )
+
+        if not limite.empty:
+
+            limite_geom = (
+                limite.geometry.iloc[0]
+            )
+
+            check(
+                "Geometria do limite não está vazia",
+                not limite_geom.is_empty,
+            )
+
+            check(
+                "Geometria do limite é válida",
+                limite_geom.is_valid,
+            )
+
+        # ==================================================
+        # 4. CRS
+        # ==================================================
+
+        print("\n--- CONSISTÊNCIA DE CRS ---")
+
+        if (
+            setores.crs is not None
+            and bairros.crs is not None
+        ):
+
+            check(
+                "Setores e bairros possuem o mesmo CRS",
+                setores.crs == bairros.crs,
+                (
+                    f"Setores: {setores.crs} | "
+                    f"Bairros: {bairros.crs}"
+                ),
+            )
+
+        if (
+            setores.crs is not None
+            and limite.crs is not None
+        ):
+
+            check(
+                "Setores e limite possuem o mesmo CRS",
+                setores.crs == limite.crs,
+                (
+                    f"Setores: {setores.crs} | "
+                    f"Limite: {limite.crs}"
+                ),
+            )
+
+        # ==================================================
+        # 5. EXTENSÃO ESPACIAL
+        # ==================================================
+
+        print("\n--- EXTENSÃO ESPACIAL ---")
+
+        if (
+            not setores.empty
+            and not limite.empty
+        ):
+
+            setores_union = (
+                setores.geometry
+                .union_all()
+            )
+
+            limite_geom = (
+                limite.geometry.iloc[0]
+            )
+
+            check(
+                "Setores estão contidos no limite municipal",
+                setores_union.within(
+                    limite_geom.buffer(0.01)
+                ),
+            )
+
+            # ==================================================
+            # RESUMO
+            # ==================================================
+
+            print("\n" + "=" * 70)
+
+            if problemas == 0:
+
+                print(
+                    "VALIDAÇÃO CONCLUÍDA: "
+                    "nenhum problema crítico encontrado."
+                )
+
+            else:
+
+                print(
+                    "VALIDAÇÃO CONCLUÍDA COM ALERTAS."
+                )
+
+                print(
+                    f"Total de verificações com problema: "
+                    f"{problemas}"
+                )
+
+                print("=" * 70)
+
+def load_basic_sector_data(
+    source_dir,
+    municipality_code,
+    population_variable="V0001",
+    avg_household_size_variable="V0005",
+    households_variable="V0007",
+):
+    source_dir = Path(source_dir)
+
+    csv_files = list(
+        source_dir.rglob("*.csv")
+    )
+
+    if not csv_files:
+        raise FileNotFoundError(
+            f"Nenhum CSV encontrado em {source_dir}"
+        )
+
+    basic_files = [
+        file
+        for file in csv_files
+        if "basico" in file.name.lower()
+    ]
+
+    if basic_files:
+        csv_path = basic_files[0]
+    else:
+        csv_path = csv_files[0]
+
+    print(
+        f"Lendo agregados básicos: {csv_path.name}"
+    )
+
+    # --------------------------------------------------
+    # LEITURA COM FALLBACK DE ENCODING
+    # --------------------------------------------------
+
+    encodings = [
+        "utf-8-sig",
+        "cp1252",
+        "latin-1",
+    ]
+
+    df = None
+    used_encoding = None
+
+    for encoding in encodings:
+        try:
+            df = pd.read_csv(
+                csv_path,
+                sep=";",
+                quotechar='"',
+                encoding=encoding,
+                dtype=str,
+                low_memory=False
+            )
+
+            used_encoding = encoding
+            break
+
+        except UnicodeDecodeError:
+            continue
+
+    if df is None:
+        raise UnicodeError(
+            "Não foi possível ler o arquivo de agregados básicos "
+            "usando utf-8-sig, cp1252 ou latin-1."
+        )
+
+    print(
+        f"Encoding utilizado nos agregados básicos: "
+        f"{used_encoding}"
+    )
+
+    # limpa nomes de colunas
+    df.columns = (
+        df.columns
+        .str.replace("\ufeff", "", regex=False)
+        .str.strip()
+    )
+
+    print("\nColunas encontradas nos agregados básicos:")
+
+    for col in df.columns:
+        print(" -", repr(col))
+
+    required = [
+        "CD_SETOR",
+        population_variable,
+        avg_household_size_variable,
+        households_variable,
+    ]
+
+    missing = [
+        col
+        for col in required
+        if col not in df.columns
+    ]
+
+    if missing:
+        raise KeyError(
+            "Colunas ausentes nos agregados básicos: "
+            f"{missing}"
         )
 
     # --------------------------------------------------
-    # RENDA
+    # FILTRA PORTO ALEGRE
     # --------------------------------------------------
 
-    if income_variable in setores.columns:
+    municipality_code = str(
+        municipality_code
+    )
 
-        renda = pd.to_numeric(
-            setores[income_variable],
+    df["CD_SETOR"] = (
+        df["CD_SETOR"]
+        .astype(str)
+        .str.strip()
+    )
+
+    poa = df.loc[
+        df["CD_SETOR"].str.startswith(
+            municipality_code,
+            na=False
+        ),
+        required
+    ].copy()
+
+    # --------------------------------------------------
+    # CONVERSÃO NUMÉRICA
+    # --------------------------------------------------
+
+    numeric_columns = [
+        population_variable,
+        avg_household_size_variable,
+        households_variable,
+    ]
+
+    for col in numeric_columns:
+
+        poa[col] = (
+            poa[col]
+            .astype(str)
+            .str.replace(",", ".", regex=False)
+        )
+
+        poa[col] = pd.to_numeric(
+            poa[col],
             errors="coerce"
         )
 
-        renda_nula = (
-            renda.isna().sum()
-        )
+    # --------------------------------------------------
+    # DUPLICIDADES
+    # --------------------------------------------------
 
-        renda_negativa = (
-            (renda.dropna() < 0)
-            .sum()
-        )
-
-        check(
-            f"{income_variable} possui dados",
-            renda.notna().any(),
-        )
-
-        check(
-            f"{income_variable} não possui valores negativos",
-            renda_negativa == 0,
-            f"{renda_negativa} valores negativos.",
-        )
-
-        taxa_match = (
-            renda.notna().mean()
-            * 100
-        )
-
-        print(
-            f"  Correspondência renda/setores: "
-            f"{taxa_match:.2f}%"
-        )
-
-        check(
-            "Correspondência da renda é maior que 95%",
-            taxa_match >= 95,
-            (
-                f"Apenas {taxa_match:.2f}% dos setores "
-                "possuem renda."
-            ),
-        )
-
-    # ==================================================
-    # 2. BAIRROS
-    # ==================================================
-
-    print("\n--- BAIRROS ---")
-
-    check(
-        "Base de bairros não está vazia",
-        not bairros.empty,
+    duplicated = (
+        poa["CD_SETOR"]
+        .duplicated()
+        .sum()
     )
 
-    check(
-        "Bairros possuem CRS",
-        bairros.crs is not None,
-    )
-
-    check(
-        "Coluna CD_BAIRRO existe",
-        "CD_BAIRRO" in bairros.columns,
-    )
-
-    if "CD_BAIRRO" in bairros.columns:
-
-        bairros_duplicados = (
-            bairros["CD_BAIRRO"]
-            .duplicated()
-            .sum()
+    if duplicated > 0:
+        raise ValueError(
+            f"Foram encontrados {duplicated} "
+            "CD_SETOR duplicados nos agregados básicos."
         )
 
-        check(
-            "CD_BAIRRO não possui duplicatas",
-            bairros_duplicados == 0,
-            (
-                f"{bairros_duplicados} códigos "
-                "de bairro duplicados."
-            ),
-        )
+    # --------------------------------------------------
+    # VALIDAÇÃO
+    # --------------------------------------------------
 
-    bairros_geom_nulas = (
-        bairros.geometry
+    print(
+        f"\nSetores de Porto Alegre encontrados "
+        f"nos agregados básicos: {len(poa)}"
+    )
+
+    print(
+        "\nValores ausentes nos agregados básicos:"
+    )
+
+    print(
+        poa[
+            numeric_columns
+        ]
         .isna()
         .sum()
     )
 
-    check(
-        "Bairros não possuem geometrias nulas",
-        bairros_geom_nulas == 0,
-        (
-            f"{bairros_geom_nulas} geometrias "
-            "de bairro nulas."
-        ),
+    print(
+        "\nPrimeiros registros dos agregados básicos:"
     )
 
-    if not bairros.empty:
-
-        bairros_invalidos = (
-            ~bairros.geometry.is_valid
-        ).sum()
-
-        check(
-            "Geometrias dos bairros são válidas",
-            bairros_invalidos == 0,
-            (
-                f"{bairros_invalidos} geometrias "
-                "inválidas."
-            ),
-        )
-
-    # ==================================================
-    # 3. LIMITE MUNICIPAL
-    # ==================================================
-
-    print("\n--- LIMITE MUNICIPAL ---")
-
-    check(
-        "Limite municipal não está vazio",
-        not limite.empty,
+    print(
+        poa.head()
     )
 
-    check(
-        "Limite possui CRS",
-        limite.crs is not None,
-    )
+    return poa
 
-    check(
-        "Limite possui apenas uma geometria",
-        len(limite) == 1,
-        (
-            f"Foram encontradas {len(limite)} "
-            "geometrias."
-        ),
-    )
-
-    if not limite.empty:
-
-        limite_geom = (
-            limite.geometry.iloc[0]
-        )
-
-        check(
-            "Geometria do limite não está vazia",
-            not limite_geom.is_empty,
-        )
-
-        check(
-            "Geometria do limite é válida",
-            limite_geom.is_valid,
-        )
-
-    # ==================================================
-    # 4. CRS
-    # ==================================================
-
-    print("\n--- CONSISTÊNCIA DE CRS ---")
-
-    if (
-        setores.crs is not None
-        and bairros.crs is not None
-    ):
-
-        check(
-            "Setores e bairros possuem o mesmo CRS",
-            setores.crs == bairros.crs,
-            (
-                f"Setores: {setores.crs} | "
-                f"Bairros: {bairros.crs}"
-            ),
-        )
-
-    if (
-        setores.crs is not None
-        and limite.crs is not None
-    ):
-
-        check(
-            "Setores e limite possuem o mesmo CRS",
-            setores.crs == limite.crs,
-            (
-                f"Setores: {setores.crs} | "
-                f"Limite: {limite.crs}"
-            ),
-        )
-
-    # ==================================================
-    # 5. EXTENSÃO ESPACIAL
-    # ==================================================
-
-    print("\n--- EXTENSÃO ESPACIAL ---")
-
-    if (
-        not setores.empty
-        and not limite.empty
-    ):
-
-        setores_union = (
-            setores.geometry
-            .union_all()
-        )
-
-        limite_geom = (
-            limite.geometry.iloc[0]
-        )
-
-        check(
-            "Setores estão contidos no limite municipal",
-            setores_union.within(
-                limite_geom.buffer(0.01)
-            ),
-        )
-
-    # ==================================================
-    # RESUMO
-    # ==================================================
-
-    print("\n" + "=" * 70)
-
-    if problemas == 0:
-
-        print(
-            "VALIDAÇÃO CONCLUÍDA: "
-            "nenhum problema crítico encontrado."
-        )
-
-    else:
-
-        print(
-            "VALIDAÇÃO CONCLUÍDA COM ALERTAS."
-        )
-
-        print(
-            f"Total de verificações com problema: "
-            f"{problemas}"
-        )
-
-    print("=" * 70)
+    

@@ -4,8 +4,14 @@
   "uf": "RS",
   "crs": "EPSG:31982",
 
+
   "income_variable": "V06004",
   "income_weight": "V06001",
+  "residents_variable": "V06002",
+
+  "basic_population_variable": "v0001",
+  "basic_avg_household_size_variable": "v0005",
+  "basic_households_variable": "v0007",
 
   "grid_sizes": [
     500,
